@@ -1,126 +1,69 @@
 'use client'
 
-import { useState } from 'react'
-import { Menu, Settings, Bell, AlertCircle, Trash2, Eye, EyeOff, Archive, Filter, CheckCircle, Clock, AlertTriangle } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Menu, Settings, Bell, AlertCircle, Trash2, Eye, EyeOff, Archive, Filter, Clock, AlertTriangle, Zap, Gauge, Activity } from 'lucide-react'
 import Link from 'next/link'
+import Image from 'next/image'
+import { alertsAPI } from '@/lib/apiClient'
+
+interface Alert {
+  id: number
+  title: string
+  message: string
+  severity: 'critical' | 'high' | 'medium' | 'low' | 'info'
+  status: 'unread' | 'read'
+  device_id: number
+  created_at: string
+}
 
 export default function AlertsPage() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
-  const [filterType, setFilterType] = useState('all')
   const [filterStatus, setFilterStatus] = useState('all')
+  const [alerts, setAlerts] = useState<Alert[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-  const alerts = [
-    {
-      id: 1,
-      type: 'warning',
-      title: 'High Power Consumption Detected',
-      message: 'AC Unit consumption exceeded 3.0 kW threshold',
-      device: 'AC Unit - Living Room',
-      time: '5 minutes ago',
-      timestamp: new Date(Date.now() - 5 * 60000),
-      read: false,
-      severity: 'high'
-    },
-    {
-      id: 2,
-      type: 'error',
-      title: 'Device Offline',
-      message: 'Water Heater lost connection',
-      device: 'Water Heater - Basement',
-      time: '2 hours ago',
-      timestamp: new Date(Date.now() - 2 * 3600000),
-      read: false,
-      severity: 'critical'
-    },
-    {
-      id: 3,
-      type: 'success',
-      title: 'Solar Panel Efficiency Peak',
-      message: 'Solar panels operating at 100% capacity',
-      device: 'Solar Array',
-      time: '1 hour ago',
-      timestamp: new Date(Date.now() - 1 * 3600000),
-      read: true,
-      severity: 'info'
-    },
-    {
-      id: 4,
-      type: 'warning',
-      title: 'Temperature Alert',
-      message: 'Heater temperature exceeds safe limit',
-      device: 'Water Heater - Basement',
-      time: '3 hours ago',
-      timestamp: new Date(Date.now() - 3 * 3600000),
-      read: true,
-      severity: 'medium'
-    },
-    {
-      id: 5,
-      type: 'info',
-      title: 'Maintenance Reminder',
-      message: 'Scheduled maintenance due for AC Unit',
-      device: 'AC Unit - Living Room',
-      time: '1 day ago',
-      timestamp: new Date(Date.now() - 24 * 3600000),
-      read: true,
-      severity: 'info'
-    },
-    {
-      id: 6,
-      type: 'warning',
-      title: 'Energy Usage Peak',
-      message: 'Daily peak energy usage recorded',
-      device: 'Entire System',
-      time: '2 days ago',
-      timestamp: new Date(Date.now() - 2 * 24 * 3600000),
-      read: true,
-      severity: 'medium'
-    },
-    {
-      id: 7,
-      type: 'success',
-      title: 'Efficiency Improved',
-      message: 'Overall system efficiency increased by 3%',
-      device: 'Entire System',
-      time: '3 days ago',
-      timestamp: new Date(Date.now() - 3 * 24 * 3600000),
-      read: true,
-      severity: 'info'
-    },
-    {
-      id: 8,
-      type: 'error',
-      title: 'Sensor Malfunction',
-      message: 'Sensor reading inconsistency detected',
-      device: 'Lighting System',
-      time: '4 days ago',
-      timestamp: new Date(Date.now() - 4 * 24 * 3600000),
-      read: true,
-      severity: 'high'
-    },
-  ]
+  // Load alerts
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        setLoading(true)
+        const alertsData = await alertsAPI.getAll()
+        setAlerts(alertsData)
+        setError(null)
+      } catch (err) {
+        console.error('Error loading alerts:', err)
+        setError(err instanceof Error ? err.message : 'Failed to load alerts')
+        setAlerts([])
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadData()
+  }, [])
 
   const filteredAlerts = alerts.filter(alert => {
-    const typeMatch = filterType === 'all' || alert.type === filterType
-    const statusMatch = filterStatus === 'all' || (filterStatus === 'unread' ? !alert.read : alert.read)
-    return typeMatch && statusMatch
+    const statusMatch = filterStatus === 'all' || (filterStatus === 'unread' ? alert.status === 'unread' : alert.status === 'read')
+    return statusMatch
   })
 
   const stats = {
     total: alerts.length,
     critical: alerts.filter(a => a.severity === 'critical').length,
-    unread: alerts.filter(a => !a.read).length,
-    resolved: alerts.filter(a => a.read).length,
+    unread: alerts.filter(a => a.status === 'unread').length,
+    resolved: alerts.filter(a => a.status === 'read').length,
   }
 
-  const getAlertIcon = (type: string) => {
-    switch (type) {
-      case 'error':
+  const getAlertIcon = (severity: string) => {
+    switch (severity) {
+      case 'critical':
+      case 'high':
         return <AlertTriangle className="text-red-500" size={20} />
-      case 'warning':
+      case 'medium':
         return <AlertCircle className="text-yellow-500" size={20} />
-      case 'success':
-        return <CheckCircle className="text-green-500" size={20} />
+      case 'low':
+        return <Clock className="text-blue-500" size={20} />
       default:
         return <Clock className="text-blue-500" size={20} />
     }
@@ -134,9 +77,42 @@ export default function AlertsPage() {
         return 'bg-orange-100 border-l-4 border-orange-500'
       case 'medium':
         return 'bg-yellow-100 border-l-4 border-yellow-500'
+      case 'low':
+        return 'bg-blue-100 border-l-4 border-blue-500'
       default:
         return 'bg-blue-100 border-l-4 border-blue-500'
     }
+  }
+
+  const handleMarkAsRead = async (alertId: number) => {
+    try {
+      await alertsAPI.markAsRead(alertId)
+      setAlerts(alerts.map(a => 
+        a.id === alertId ? { ...a, status: 'read' } : a
+      ))
+    } catch (err) {
+      console.error('Error marking alert as read:', err)
+    }
+  }
+
+  const handleDelete = async (alertId: number) => {
+    try {
+      await alertsAPI.delete(alertId)
+      setAlerts(alerts.filter(a => a.id !== alertId))
+    } catch (err) {
+      console.error('Error deleting alert:', err)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex h-screen bg-gray-50 items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-gray-600">Memuat pemberitahuan...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -145,23 +121,37 @@ export default function AlertsPage() {
       <aside
         className={`${
           sidebarOpen ? 'w-64' : 'w-20'
-        } gradient-primary text-white transition-all duration-300 flex flex-col shadow-xl`}
+        } bg-slate-950 text-white transition-all duration-300 flex flex-col shadow-xl`}
       >
-        <div className="p-6 flex items-center justify-between">
-          {sidebarOpen && <h1 className="text-2xl font-bold">SmartEnergy</h1>}
-          <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 hover:bg-white/20 rounded-lg">
-            <Menu size={20} />
-          </button>
+        <div className="p-4 flex items-center justify-center">
+          {sidebarOpen ? (
+            <div className="w-full flex items-center justify-between">
+              <Image src="/mekansm-logo.png" alt="Mekansm Logo" width={150} height={45} priority className="h-10 w-auto object-contain" />
+              <button
+                onClick={() => setSidebarOpen(!sidebarOpen)}
+                className="p-2 hover:bg-white/20 rounded-lg flex-shrink-0 ml-2"
+              >
+                <Menu size={20} />
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="p-2 hover:bg-white/20 rounded-lg"
+            >
+              <Menu size={20} />
+            </button>
+          )}
         </div>
 
-        <nav className="flex-1 px-3 space-y-2">
-          <NavLink href="/" icon={<Settings size={20} />} label="Dasbor" sidebarOpen={sidebarOpen} />
-          <NavLink href="/devices" icon={<Menu size={20} />} label="Perangkat" sidebarOpen={sidebarOpen} />
-          <NavLink href="/analytics" icon={<Filter size={20} />} label="Analitik" sidebarOpen={sidebarOpen} />
+        <nav className="flex-1 px-2 space-y-1">
+          <NavLink href="/" icon={<Activity size={20} />} label="Dasbor" sidebarOpen={sidebarOpen} />
+          <NavLink href="/devices" icon={<Gauge size={20} />} label="Perangkat" sidebarOpen={sidebarOpen} />
+          <NavLink href="/analytics" icon={<Zap size={20} />} label="Analitik" sidebarOpen={sidebarOpen} />
           <NavLink href="/alerts" icon={<Bell size={20} />} label="Pemberitahuan" active sidebarOpen={sidebarOpen} />
         </nav>
 
-        <div className="px-3 pb-6 space-y-2 border-t border-white/20 pt-4">
+        <div className="px-2 pb-6 space-y-1 border-t border-white/20 pt-4">
           <NavLink href="/settings" icon={<Settings size={20} />} label="Pengaturan" sidebarOpen={sidebarOpen} />
         </div>
       </aside>
@@ -172,15 +162,15 @@ export default function AlertsPage() {
         <header className="bg-white shadow-sm border-b border-gray-200 p-6">
           <div className="flex justify-between items-center mb-4">
             <div>
-              <h2 className="text-3xl font-bold text-gray-900">Pemberitahuan & Notifikasi</h2>
-              <p className="text-gray-500 mt-1">Pantau dan kelola pemberitahuan sistem</p>
+              <h2 className="text-3xl font-bold text-gray-900">Notifikasi & Peringatan</h2>
+              <p className="text-gray-500 mt-1">Pantau dan kelola notifikasi sistem Meeting Room</p>
             </div>
             <div className="flex items-center space-x-4">
               <div className="text-right">
                 <p className="text-sm text-gray-500">Belum Dibaca</p>
                 <p className="text-2xl font-bold text-red-600">{stats.unread}</p>
               </div>
-              <button className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-teal-700 flex items-center space-x-2">
+              <button className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center space-x-2">
                 <Bell size={20} />
                 <span>Pengaturan</span>
               </button>
@@ -189,18 +179,6 @@ export default function AlertsPage() {
 
           {/* Filter Bar */}
           <div className="flex items-center space-x-4">
-            <select
-              value={filterType}
-              onChange={(e) => setFilterType(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-primary"
-            >
-              <option value="all">Semua Tipe</option>
-              <option value="error">Kesalahan</option>
-              <option value="warning">Peringatan</option>
-              <option value="success">Berhasil</option>
-              <option value="info">Info</option>
-            </select>
-
             <select
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
@@ -225,6 +203,11 @@ export default function AlertsPage() {
 
           {/* Alerts List */}
           <div className="space-y-3">
+            {error && (
+              <div className="bg-red-100 border-l-4 border-red-500 rounded-lg p-4">
+                <p className="text-red-700">Error: {error}</p>
+              </div>
+            )}
             {filteredAlerts.length === 0 ? (
               <div className="bg-white rounded-xl card-shadow p-12 text-center">
                 <Bell size={48} className="text-gray-300 mx-auto mb-4" />
@@ -239,27 +222,31 @@ export default function AlertsPage() {
                   <div className="flex items-start justify-between">
                     <div className="flex items-start space-x-4 flex-1">
                       <div className="p-2 bg-white/50 rounded-lg mt-1">
-                        {getAlertIcon(alert.type)}
+                        {getAlertIcon(alert.severity)}
                       </div>
                       <div className="flex-1">
                         <div className="flex items-center space-x-2 mb-1">
                           <h4 className="font-semibold text-gray-900">{alert.title}</h4>
-                          {!alert.read && (
+                          {alert.status === 'unread' && (
                             <span className="inline-block w-2 h-2 bg-red-500 rounded-full" />
                           )}
                         </div>
                         <p className="text-sm text-gray-600 mb-2">{alert.message}</p>
                         <div className="flex items-center space-x-4 text-xs text-gray-500">
-                          <span className="font-medium">{alert.device}</span>
-                          <span>{alert.time}</span>
+                          <span className="font-medium">Meeting Room</span>
+                          <span>{new Date(alert.created_at).toLocaleString()}</span>
                         </div>
                       </div>
                     </div>
 
                     {/* Action Buttons */}
                     <div className="flex items-center space-x-2 ml-4">
-                      <button className="p-2 hover:bg-white/50 rounded-lg smooth-transition" title="Mark as read">
-                        {alert.read ? (
+                      <button 
+                        onClick={() => handleMarkAsRead(alert.id)}
+                        className="p-2 hover:bg-white/50 rounded-lg smooth-transition" 
+                        title="Mark as read"
+                      >
+                        {alert.status === 'read' ? (
                           <Eye size={18} className="text-gray-600" />
                         ) : (
                           <EyeOff size={18} className="text-gray-400" />
@@ -268,8 +255,12 @@ export default function AlertsPage() {
                       <button className="p-2 hover:bg-white/50 rounded-lg smooth-transition" title="Archive">
                         <Archive size={18} className="text-gray-600" />
                       </button>
-                      <button className="p-2 hover:bg-red-200 rounded-lg smooth-transition" title="Delete">
-                        <Trash2 size={18} className="text-red-600" />
+                      <button 
+                        onClick={() => handleDelete(alert.id)}
+                        className="p-2 hover:bg-red-200 rounded-lg smooth-transition" 
+                        title="Delete"
+                      >
+                        <Trash2 size={18} className="text-red-500" />
                       </button>
                     </div>
                   </div>
@@ -287,12 +278,15 @@ function NavLink({ href, icon, label, active = false, sidebarOpen }: any) {
   return (
     <Link
       href={href}
-      className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg smooth-transition ${
-        active ? 'bg-white/20 text-white' : 'text-white/70 hover:bg-white/10'
+      title={label}
+      className={`w-full flex items-center justify-center px-3 py-3 rounded-lg smooth-transition ${
+        active ? 'bg-red-500/20 text-white' : 'text-gray-300 hover:bg-gray-800 hover:text-red-400'
       }`}
     >
-      {icon}
-      {sidebarOpen && <span className="text-sm font-medium">{label}</span>}
+      <div className="flex items-center space-x-3 w-full">
+        <span className={`flex-shrink-0 ${active ? 'text-red-500' : 'text-red-400'}`}>{icon}</span>
+        {sidebarOpen && <span className={`text-sm font-medium whitespace-nowrap ${active ? 'text-white' : 'text-gray-300'}`}>{label}</span>}
+      </div>
     </Link>
   )
 }

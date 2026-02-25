@@ -1,6 +1,6 @@
-# Smart Energy Consumption Dashboard
+# Mekansm Energy Dashboard
 
-Dashboard modern profesional untuk monitoring konsumsi energi real-time.
+Dashboard modern profesional untuk monitoring konsumsi energi real-time Meeting Room.
 
 ## 🚀 Fitur Utama
 

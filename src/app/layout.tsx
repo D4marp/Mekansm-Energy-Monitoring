@@ -2,8 +2,8 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Smart Energy Dashboard',
-  description: 'Professional Energy Consumption Monitoring Dashboard',
+  title: 'Mekansm Energy Dashboard',
+  description: 'Mekansm - Meeting Room Energy Monitoring Dashboard',
 }
 
 export default function RootLayout({

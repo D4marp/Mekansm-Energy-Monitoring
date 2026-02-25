@@ -1,12 +1,23 @@
 'use client'
 
-import { useState } from 'react'
-import { Menu, Settings, Save, ChevronRight, Bell, Lock, Eye, Mail, Smartphone, AlertCircle } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Menu, Settings, Save, ChevronRight, Bell, Lock, Eye, Mail, Smartphone, AlertCircle, Activity, Gauge, Zap } from 'lucide-react'
 import Link from 'next/link'
+import Image from 'next/image'
+import { settingsAPI } from '@/lib/apiClient'
+
+interface Setting {
+  key: string
+  value: string
+  description?: string
+}
 
 export default function SettingsPage() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [activeTab, setActiveTab] = useState('general')
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [isSaving, setIsSaving] = useState(false)
   const [settings, setSettings] = useState({
     // General
     timezone: 'Asia/Jakarta',
@@ -30,6 +41,37 @@ export default function SettingsPage() {
     autoLogout: true,
   })
 
+  // Load settings from API
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        setLoading(true)
+        const apiSettings = await settingsAPI.getAll()
+        
+        // Merge API settings with defaults
+        const mergedSettings = { ...settings }
+        apiSettings.forEach((setting: Setting) => {
+          const key = setting.key.replace(/\./g, '_')
+          if (key in mergedSettings) {
+            const value = setting.value;
+            (mergedSettings as any)[key] = 
+              value === 'true' ? true : value === 'false' ? false : isNaN(Number(value)) ? value : Number(value)
+          }
+        })
+        
+        setSettings(mergedSettings)
+        setError(null)
+      } catch (err) {
+        console.error('Error loading settings:', err)
+        setError(err instanceof Error ? err.message : 'Failed to load settings')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadSettings()
+  }, [])
+
   const handleToggle = (key: keyof typeof settings) => {
     setSettings({ ...settings, [key]: !settings[key] })
   }
@@ -38,29 +80,76 @@ export default function SettingsPage() {
     setSettings({ ...settings, [key]: value })
   }
 
+  const handleSave = async () => {
+    try {
+      setIsSaving(true)
+      
+      // Save each setting
+      for (const [key, value] of Object.entries(settings)) {
+        await settingsAPI.update(
+          key.replace(/_/g, '.'),
+          String(value)
+        )
+      }
+      
+      setError(null)
+      alert('Pengaturan berhasil disimpan!')
+    } catch (err) {
+      console.error('Error saving settings:', err)
+      setError(err instanceof Error ? err.message : 'Failed to save settings')
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex h-screen bg-gray-50 items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-gray-600">Memuat pengaturan...</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="flex h-screen bg-gray-50">
       {/* Sidebar */}
       <aside
         className={`${
           sidebarOpen ? 'w-64' : 'w-20'
-        } gradient-primary text-white transition-all duration-300 flex flex-col shadow-xl`}
+        } bg-slate-950 text-white transition-all duration-300 flex flex-col shadow-xl`}
       >
-        <div className="p-6 flex items-center justify-between">
-          {sidebarOpen && <h1 className="text-2xl font-bold">SmartEnergy</h1>}
-          <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 hover:bg-white/20 rounded-lg">
-            <Menu size={20} />
-          </button>
+        <div className="p-4 flex items-center justify-center">
+          {sidebarOpen ? (
+            <div className="w-full flex items-center justify-between">
+              <Image src="/mekansm-logo.png" alt="Mekansm Logo" width={150} height={45} priority className="h-10 w-auto object-contain" />
+              <button
+                onClick={() => setSidebarOpen(!sidebarOpen)}
+                className="p-2 hover:bg-white/20 rounded-lg flex-shrink-0 ml-2"
+              >
+                <Menu size={20} />
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="p-2 hover:bg-white/20 rounded-lg"
+            >
+              <Menu size={20} />
+            </button>
+          )}
         </div>
 
-        <nav className="flex-1 px-3 space-y-2">
-          <NavLink href="/" icon={<Settings size={20} />} label="Dasbor" sidebarOpen={sidebarOpen} />
-          <NavLink href="/devices" icon={<Menu size={20} />} label="Perangkat" sidebarOpen={sidebarOpen} />
-          <NavLink href="/analytics" icon={<AlertCircle size={20} />} label="Analitik" sidebarOpen={sidebarOpen} />
+        <nav className="flex-1 px-2 space-y-1">
+          <NavLink href="/" icon={<Activity size={20} />} label="Dasbor" sidebarOpen={sidebarOpen} />
+          <NavLink href="/devices" icon={<Gauge size={20} />} label="Perangkat" sidebarOpen={sidebarOpen} />
+          <NavLink href="/analytics" icon={<Zap size={20} />} label="Analitik" sidebarOpen={sidebarOpen} />
           <NavLink href="/alerts" icon={<Bell size={20} />} label="Pemberitahuan" sidebarOpen={sidebarOpen} />
         </nav>
 
-        <div className="px-3 pb-6 space-y-2 border-t border-white/20 pt-4">
+        <div className="px-2 pb-6 space-y-1 border-t border-white/20 pt-4">
           <NavLink href="/settings" icon={<Settings size={20} />} label="Pengaturan" active sidebarOpen={sidebarOpen} />
         </div>
       </aside>
@@ -72,13 +161,22 @@ export default function SettingsPage() {
           <div className="flex justify-between items-center">
             <div>
               <h2 className="text-3xl font-bold text-gray-900">Pengaturan</h2>
-              <p className="text-gray-500 mt-1">Konfigurasi sistem Smart Energy Anda</p>
+              <p className="text-gray-500 mt-1">Konfigurasi sistem Mekansm Energy</p>
             </div>
-            <button className="px-6 py-2 bg-primary text-white rounded-lg hover:bg-teal-700 flex items-center space-x-2 smooth-transition">
+            <button 
+              onClick={handleSave}
+              disabled={isSaving || loading}
+              className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2 smooth-transition"
+            >
               <Save size={20} />
-              <span>Simpan Perubahan</span>
+              <span>{isSaving ? 'Menyimpan...' : 'Simpan Perubahan'}</span>
             </button>
           </div>
+          {error && (
+            <div className="bg-red-100 border-l-4 border-red-500 p-4 text-red-700">
+              <p>Error: {error}</p>
+            </div>
+          )}
         </header>
 
         {/* Content */}
@@ -217,7 +315,7 @@ export default function SettingsPage() {
             {/* Thresholds */}
             {activeTab === 'thresholds' && (
               <div className="max-w-2xl">
-                <h3 className="text-2xl font-bold text-gray-900 mb-6">Alert Thresholds</h3>
+                <h3 className="text-2xl font-bold text-gray-900 mb-6">Ambang Batas Peringatan</h3>
                 
                 <div className="space-y-6">
                   <SettingItem
@@ -262,7 +360,7 @@ export default function SettingsPage() {
             {/* Security */}
             {activeTab === 'security' && (
               <div className="max-w-2xl">
-                <h3 className="text-2xl font-bold text-gray-900 mb-6">Security Settings</h3>
+                <h3 className="text-2xl font-bold text-gray-900 mb-6">Pengaturan Keamanan</h3>
                 
                 <div className="space-y-4">
                   <ToggleItem
@@ -297,30 +395,30 @@ export default function SettingsPage() {
             {/* Account */}
             {activeTab === 'account' && (
               <div className="max-w-2xl">
-                <h3 className="text-2xl font-bold text-gray-900 mb-6">Account Settings</h3>
+                <h3 className="text-2xl font-bold text-gray-900 mb-6">Pengaturan Akun</h3>
                 
                 <div className="bg-white rounded-xl card-shadow p-6 space-y-6">
                   <div>
-                    <label className="block text-sm font-semibold text-gray-900 mb-2">Account Email</label>
+                    <label className="block text-sm font-semibold text-gray-900 mb-2">Email Akun</label>
                     <input
                       type="email"
-                      defaultValue="user@example.com"
+                      defaultValue="admin@mekansm.co.id"
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-100"
                       disabled
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-semibold text-gray-900 mb-2">Full Name</label>
+                    <label className="block text-sm font-semibold text-gray-900 mb-2">Nama Lengkap</label>
                     <input
                       type="text"
-                      defaultValue="John Doe"
+                      defaultValue="Admin Mekansm"
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-primary"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-semibold text-gray-900 mb-2">Phone Number</label>
+                    <label className="block text-sm font-semibold text-gray-900 mb-2">Nomor Telepon</label>
                     <input
                       type="tel"
                       defaultValue="+62 821 1234 5678"
@@ -331,9 +429,9 @@ export default function SettingsPage() {
                   <hr className="my-4" />
 
                   <div>
-                    <h4 className="font-semibold text-gray-900 mb-3">Danger Zone</h4>
+                    <h4 className="font-semibold text-gray-900 mb-3">Zona Bahaya</h4>
                     <button className="px-4 py-2 border border-red-500 text-red-500 rounded-lg hover:bg-red-50 smooth-transition font-medium">
-                      Delete Account
+                      Hapus Akun
                     </button>
                   </div>
                 </div>
@@ -350,12 +448,15 @@ function NavLink({ href, icon, label, active = false, sidebarOpen }: any) {
   return (
     <Link
       href={href}
-      className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg smooth-transition ${
-        active ? 'bg-white/20 text-white' : 'text-white/70 hover:bg-white/10'
+      title={label}
+      className={`w-full flex items-center justify-center px-3 py-3 rounded-lg smooth-transition ${
+        active ? 'bg-red-500/20 text-white' : 'text-gray-300 hover:bg-gray-800 hover:text-red-400'
       }`}
     >
-      {icon}
-      {sidebarOpen && <span className="text-sm font-medium">{label}</span>}
+      <div className="flex items-center space-x-3 w-full">
+        <span className={`flex-shrink-0 ${active ? 'text-red-500' : 'text-red-400'}`}>{icon}</span>
+        {sidebarOpen && <span className={`text-sm font-medium whitespace-nowrap ${active ? 'text-white' : 'text-gray-300'}`}>{label}</span>}
+      </div>
     </Link>
   )
 }

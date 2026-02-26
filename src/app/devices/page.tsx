@@ -5,6 +5,7 @@ import { Power, AlertCircle, Settings, Zap, Gauge, Menu } from 'lucide-react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { devicesAPI } from '@/lib/apiClient'
+import { useRealTimePolling } from '@/lib/hooks/useRealTimePolling'
 
 interface Device {
   id: number
@@ -23,25 +24,23 @@ export default function DevicesPage() {
   const [devices, setDevices] = useState<Device[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(null)
 
-  // Load devices
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        setLoading(true)
-        const devicesData = await devicesAPI.getAll()
-        setDevices(devicesData)
-        setError(null)
-      } catch (err) {
-        console.error('Error loading devices:', err)
-        setError(err instanceof Error ? err.message : 'Failed to load devices')
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    loadData()
-  }, [])
+  // Real-time polling - refresh devices every 5 seconds
+  useRealTimePolling(
+    async () => {
+      const devicesData = await devicesAPI.getAll()
+      return devicesData
+    },
+    (devicesData) => {
+      setDevices(devicesData)
+      setLastUpdate(new Date())
+      setError(null)
+      if (loading) setLoading(false)
+    },
+    5000, // 5 second interval
+    true
+  )
 
   const filteredDevices = devices
 
@@ -111,6 +110,11 @@ export default function DevicesPage() {
               <div>
                 <h2 className="text-3xl font-bold text-gray-900">Perangkat.</h2>
                 <p className="text-gray-500 mt-1">Status dan Monitoring Perangkat Meeting Room</p>
+                {lastUpdate && (
+                  <p className="text-xs text-gray-400 mt-2">
+                    🔄 Update terakhir: {lastUpdate.toLocaleTimeString('id-ID')}
+                  </p>
+                )}
               </div>
             </div>
 

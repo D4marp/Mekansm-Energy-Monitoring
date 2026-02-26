@@ -6,6 +6,7 @@ import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, L
 import Link from 'next/link'
 import Image from 'next/image'
 import { devicesAPI, consumptionAPI } from '@/lib/apiClient'
+import { useMultipleRealTimePolling } from '@/lib/hooks/useRealTimePolling'
 
 interface Device {
   id: number
@@ -23,6 +24,7 @@ export default function AnalyticsPage() {
   const [_error, setError] = useState<string | null>(null)
   const [monthlyData, setMonthlyData] = useState<any[]>([])
   const [dailyTrends, setDailyTrends] = useState<any[]>([])
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(null)
 
   // Monthly AC & Lamp Data
   const defaultMonthlyData = [
@@ -75,66 +77,75 @@ export default function AnalyticsPage() {
     { category: 'Jam Hemat', cost: 40, percentage: 17 },
   ]
 
-  // Load devices from API
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        setLoading(true)
-        const devicesData = await devicesAPI.getAll()
-        
-        setDevices(devicesData)
-        
-        // Try to load monthly consumption data
-        try {
-          const currentMonth = new Date().toISOString().slice(0, 7)
-          const monthlyConsumption = await consumptionAPI.getMonthly(devicesData[0]?.id, currentMonth)
-          if (monthlyConsumption && Array.isArray(monthlyConsumption)) {
-            const monthData = monthlyConsumption.slice(-6).map((item: any) => ({
-              month: item.month || item.date?.substring(0, 7) || '',
-              ac: parseFloat(item.energy_ac_kwh) || 0,
-              lamp: parseFloat(item.energy_lamp_kwh) || 0,
-              acEff: 89 + Math.random() * 5,
-              lampEff: 91 + Math.random() * 4,
-            }))
-            setMonthlyData(monthData.length > 0 ? monthData : defaultMonthlyData)
-          } else {
-            setMonthlyData(defaultMonthlyData)
+  // Real-time polling for devices and consumption data
+  useMultipleRealTimePolling(
+    [
+      {
+        key: 'devices',
+        fetch: async () => {
+          const devicesData = await devicesAPI.getAll()
+          return devicesData
+        },
+        onSuccess: (devicesData) => {
+          setDevices(devicesData)
+          if (loading) setLoading(false)
+          setError(null)
+        },
+      },
+      {
+        key: 'monthly',
+        fetch: async () => {
+          if (devices.length === 0) return defaultMonthlyData
+          try {
+            const currentMonth = new Date().toISOString().slice(0, 7)
+            const monthlyConsumption = await consumptionAPI.getMonthly(devices[0]?.id, currentMonth)
+            if (monthlyConsumption && Array.isArray(monthlyConsumption)) {
+              return monthlyConsumption.slice(-6).map((item: any) => ({
+                month: item.month || item.date?.substring(0, 7) || '',
+                ac: parseFloat(item.energy_ac_kwh) || 0,
+                lamp: parseFloat(item.energy_lamp_kwh) || 0,
+                acEff: 89 + Math.random() * 5,
+                lampEff: 91 + Math.random() * 4,
+              }))
+            }
+            return defaultMonthlyData
+          } catch {
+            return defaultMonthlyData
           }
-        } catch {
-          setMonthlyData(defaultMonthlyData)
-        }
-
-        // Try to load daily data
-        try {
-          const today = new Date().toISOString().split('T')[0]
-          const dailyConsumption = await consumptionAPI.getDaily(devicesData[0]?.id, today)
-          if (dailyConsumption && Array.isArray(dailyConsumption)) {
-            const dailyData = dailyConsumption.map((item: any, idx: number) => ({
-              day: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][idx % 7],
-              ac: parseFloat(item.power_ac_kw) || 0,
-              lamp: parseFloat(item.power_lamp_kw) || 0,
-            }))
-            setDailyTrends(dailyData.length > 0 ? dailyData : defaultDailyTrends)
-          } else {
-            setDailyTrends(defaultDailyTrends)
+        },
+        onSuccess: (data) => {
+          setMonthlyData(data && data.length > 0 ? data : defaultMonthlyData)
+          setLastUpdate(new Date())
+        },
+      },
+      {
+        key: 'daily',
+        fetch: async () => {
+          if (devices.length === 0) return defaultDailyTrends
+          try {
+            const today = new Date().toISOString().split('T')[0]
+            const dailyConsumption = await consumptionAPI.getDaily(devices[0]?.id, today)
+            if (dailyConsumption && Array.isArray(dailyConsumption)) {
+              return dailyConsumption.map((item: any, idx: number) => ({
+                day: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][idx % 7],
+                ac: parseFloat(item.power_ac_kw) || 0,
+                lamp: parseFloat(item.power_lamp_kw) || 0,
+              }))
+            }
+            return defaultDailyTrends
+          } catch {
+            return defaultDailyTrends
           }
-        } catch {
-          setDailyTrends(defaultDailyTrends)
-        }
-
-        setError(null)
-      } catch (err) {
-        console.error('Error loading analytics data:', err)
-        setError(err instanceof Error ? err.message : 'Failed to load data')
-        setMonthlyData(defaultMonthlyData)
-        setDailyTrends(defaultDailyTrends)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    loadData()
-  }, [])
+        },
+        onSuccess: (data) => {
+          setDailyTrends(data && data.length > 0 ? data : defaultDailyTrends)
+          setLastUpdate(new Date())
+        },
+      },
+    ],
+    10000, // 10 second interval
+    true
+  )
 
   if (loading) {
     return (
@@ -196,6 +207,11 @@ export default function AnalyticsPage() {
               <div>
                 <h2 className="text-3xl font-bold text-gray-900">Analitik AC & Lampu</h2>
                 <p className="text-gray-500 mt-1">Analisis Konsumsi Energi Terperinci - Meeting Room</p>
+                {lastUpdate && (
+                  <p className="text-xs text-gray-400 mt-2">
+                    🔄 Update terakhir: {lastUpdate.toLocaleTimeString('id-ID')}
+                  </p>
+                )}
               </div>
             </div>
 

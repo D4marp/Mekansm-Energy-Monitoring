@@ -12,6 +12,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { devicesAPI, consumptionAPI } from '@/lib/apiClient'
+import { useMultipleRealTimePolling } from '@/lib/hooks/useRealTimePolling'
 
 interface Device {
   id: number
@@ -40,74 +41,77 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null)
   const [energyData, setEnergyData] = useState<ChartDataPoint[]>([])
   const [monthlyData, setMonthlyData] = useState<ChartDataPoint[]>([])
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(null)
 
-  // Load devices and consumption data
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        setLoading(true)
-        
-        // Fetch devices
-        const devicesData = await devicesAPI.getAll()
-        
-        // Extract unique locations/classes
-        setDevices(devicesData)
-
-        // Fetch consumption data for today
-        try {
-          const today = new Date().toISOString().split('T')[0]
-          const consumptionData = await consumptionAPI.getDaily(devicesData[0]?.id, today)
-          
-          // Transform consumption data for charts
-          if (consumptionData && Array.isArray(consumptionData)) {
-            const chartData = consumptionData.map((item: any) => ({
-              time: item.timestamp?.substring(11, 16) || item.timestamp || '',
-              ac: parseFloat(item.power_ac_kw) || 0,
-              lamp: parseFloat(item.power_lamp_kw) || 0,
-            }))
-            setEnergyData(chartData.length > 0 ? chartData : generateMockCharData())
-          } else {
-            setEnergyData(generateMockCharData())
+  // Real-time polling for devices and consumption data
+  useMultipleRealTimePolling(
+    [
+      {
+        key: 'devices',
+        fetch: async () => {
+          const devicesData = await devicesAPI.getAll()
+          return devicesData
+        },
+        onSuccess: (devicesData) => {
+          setDevices(devicesData)
+          if (loading) setLoading(false)
+          setError(null)
+        },
+      },
+      {
+        key: 'daily-consumption',
+        fetch: async () => {
+          if (devices.length === 0) return generateMockCharData()
+          try {
+            const today = new Date().toISOString().split('T')[0]
+            const consumptionData = await consumptionAPI.getDaily(devices[0]?.id, today)
+            
+            if (consumptionData && Array.isArray(consumptionData)) {
+              return consumptionData.map((item: any) => ({
+                time: item.timestamp?.substring(11, 16) || item.timestamp || '',
+                ac: parseFloat(item.power_ac_kw) || 0,
+                lamp: parseFloat(item.power_lamp_kw) || 0,
+              }))
+            }
+            return generateMockCharData()
+          } catch (err) {
+            return generateMockCharData()
           }
-        } catch (err) {
-          // Fallback to mock data if consumption API fails
-          setEnergyData(generateMockCharData())
-        }
-
-        // Fetch monthly data
-        try {
-          const currentMonth = new Date().toISOString().slice(0, 7)
-          const monthlyConsumption = await consumptionAPI.getMonthly(devicesData[0]?.id, currentMonth)
-          
-          if (monthlyConsumption && Array.isArray(monthlyConsumption)) {
-            const monthData = monthlyConsumption.slice(-6).map((item: any) => ({
-              month: item.month || item.date?.substring(0, 7) || '',
-              ac: parseFloat(item.energy_ac_kwh) || 0,
-              lamp: parseFloat(item.energy_lamp_kwh) || 0,
-            }))
-            setMonthlyData(monthData.length > 0 ? monthData : generateMockMonthlyData())
-          } else {
-            setMonthlyData(generateMockMonthlyData())
+        },
+        onSuccess: (data) => {
+          setEnergyData(data && data.length > 0 ? data : generateMockCharData())
+          setLastUpdate(new Date())
+        },
+      },
+      {
+        key: 'monthly-consumption',
+        fetch: async () => {
+          if (devices.length === 0) return generateMockMonthlyData()
+          try {
+            const currentMonth = new Date().toISOString().slice(0, 7)
+            const monthlyConsumption = await consumptionAPI.getMonthly(devices[0]?.id, currentMonth)
+            
+            if (monthlyConsumption && Array.isArray(monthlyConsumption)) {
+              return monthlyConsumption.slice(-6).map((item: any) => ({
+                month: item.month || item.date?.substring(0, 7) || '',
+                ac: parseFloat(item.energy_ac_kwh) || 0,
+                lamp: parseFloat(item.energy_lamp_kwh) || 0,
+              }))
+            }
+            return generateMockMonthlyData()
+          } catch (err) {
+            return generateMockMonthlyData()
           }
-        } catch (err) {
-          // Fallback to mock data if monthly API fails
-          setMonthlyData(generateMockMonthlyData())
-        }
-
-        setError(null)
-      } catch (err) {
-        console.error('Error loading data:', err)
-        setError(err instanceof Error ? err.message : 'Failed to load data')
-        // Set fallback data
-        setEnergyData(generateMockCharData())
-        setMonthlyData(generateMockMonthlyData())
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    loadData()
-  }, [])
+        },
+        onSuccess: (data) => {
+          setMonthlyData(data && data.length > 0 ? data : generateMockMonthlyData())
+          setLastUpdate(new Date())
+        },
+      },
+    ],
+    5000, // 5 second interval for dashboard
+    true
+  )
 
   // All devices (single meeting room)
   const filteredDevices = devices
@@ -199,6 +203,11 @@ export default function Dashboard() {
               <div>
                 <h2 className="text-3xl font-bold text-gray-900">Meeting Room.</h2>
                 <p className="text-gray-500 mt-1">Pemantauan Konsumsi Energi Real-time</p>
+                {lastUpdate && (
+                  <p className="text-xs text-gray-400 mt-2">
+                    🔄 Update terakhir: {lastUpdate.toLocaleTimeString('id-ID')}
+                  </p>
+                )}
               </div>
               <div className="flex items-center space-x-4">
                 <div className="text-right">

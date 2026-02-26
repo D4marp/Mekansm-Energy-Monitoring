@@ -8,7 +8,7 @@ import {
   Zap, AlertCircle, Settings, LogOut, Menu, 
   Gauge, Activity
 } from 'lucide-react'
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { devicesAPI, consumptionAPI } from '@/lib/apiClient'

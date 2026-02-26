@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { Power, AlertCircle, Settings, Zap, Gauge, Menu } from 'lucide-react'
 import Link from 'next/link'
 import Image from 'next/image'

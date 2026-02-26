@@ -12,6 +12,9 @@ router.get('/class/:classId', DeviceController.getByClass);
 // Get devices by type
 router.get('/type/:type', DeviceController.getByType);
 
+// Get device by EUI (for Node-RED integration)
+router.get('/eui/:eui', DeviceController.getByEUI);
+
 // Get device by ID
 router.get('/:id', DeviceController.getById);
 

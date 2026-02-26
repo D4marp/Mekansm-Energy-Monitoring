@@ -21,6 +21,13 @@ router.get('/total/class/:classId', ConsumptionController.getTotalByClass);
 // Get hourly aggregated data
 router.get('/hourly/class/:classId', ConsumptionController.getHourlyAggregated);
 
+// ============ REAL-TIME DATA FROM NODE-RED ============
+// POST real-time consumption data (single device)
+router.post('/realtime', ConsumptionController.createRealTime);
+
+// POST bulk real-time consumption data (multiple devices)
+router.post('/realtime/bulk', ConsumptionController.createRealTimeBulk);
+
 // Create consumption record
 router.post('/', ConsumptionController.create);
 

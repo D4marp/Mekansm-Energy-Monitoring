@@ -177,6 +177,21 @@ class Device {
     }
   }
 
+  // Get device by IoT EUI (for Node-RED integration)
+  static async getByEUI(deviceEUI) {
+    try {
+      const [rows] = await db.query(`
+        SELECT d.*, c.name as class_name 
+        FROM devices d 
+        LEFT JOIN classes c ON d.class_id = c.id 
+        WHERE d.device_eui = ?
+      `, [deviceEUI]);
+      return rows[0];
+    } catch (error) {
+      throw new Error(`Database error: ${error.message}`);
+    }
+  }
+
   static async delete(id) {
     try {
       const [result] = await db.query('DELETE FROM devices WHERE id = ?', [id]);

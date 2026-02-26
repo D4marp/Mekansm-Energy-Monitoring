@@ -265,6 +265,227 @@ class ConsumptionController {
     }
   }
 
+  //============ REAL-TIME DATA FROM NODE-RED ============
+  // Handle real-time consumption data with device info
+  static async createRealTime(req, res) {
+    try {
+      const { 
+        device_id, 
+        device_eui,
+        consumption, 
+        temperature, 
+        humidity, 
+        timestamp,
+        device_name,
+        device_type,
+        class_id
+      } = req.body;
+
+      // Validate required fields
+      if (!consumption) {
+        return res.status(400).json({
+          success: false,
+          message: 'Consumption value is required'
+        });
+      }
+
+      if (!device_id && !device_eui) {
+        return res.status(400).json({
+          success: false,
+          message: 'Either device_id or device_eui is required'
+        });
+      }
+
+      // Get device if not provided in request
+      let deviceId = device_id;
+      let deviceInfo = null;
+
+      if (!deviceId && device_eui) {
+        // Query device by EUI
+        const Device = require('../models/Device');
+        deviceInfo = await Device.getByEUI(device_eui);
+        if (!deviceInfo) {
+          return res.status(404).json({
+            success: false,
+            message: `Device with EUI ${device_eui} not found`
+          });
+        }
+        deviceId = deviceInfo.id;
+      }
+
+      // Parse timestamp
+      const recordTime = timestamp ? new Date(timestamp) : new Date();
+      const consumptionDate = recordTime.toISOString().split('T')[0];
+      const hourStart = recordTime.toTimeString().split(' ')[0].substring(0, 8);
+      const hourEnd = new Date(recordTime.getTime() + 3600000).toTimeString().split(' ')[0].substring(0, 8);
+
+      // Insert into database
+      const db = require('../config/database');
+      const query = `
+        INSERT INTO device_consumption 
+        (device_id, consumption, consumption_date, hour_start, hour_end, temperature, humidity, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
+        ON DUPLICATE KEY UPDATE
+          consumption = VALUES(consumption),
+          temperature = IF(VALUES(temperature) IS NOT NULL, VALUES(temperature), temperature),
+          humidity = IF(VALUES(humidity) IS NOT NULL, VALUES(humidity), humidity)
+      `;
+
+      const [result] = await db.query(query, [
+        deviceId,
+        parseFloat(consumption),
+        consumptionDate,
+        hourStart,
+        hourEnd,
+        temperature ? parseFloat(temperature) : null,
+        humidity ? parseFloat(humidity) : null
+      ]);
+
+      // Update device last_reading timestamp
+      const updateDeviceQuery = `
+        UPDATE devices 
+        SET last_reading = NOW(), current_power = ?, current_temperature = ?
+        WHERE id = ?
+      `;
+      
+      await db.query(updateDeviceQuery, [
+        parseFloat(consumption),
+        temperature ? parseFloat(temperature) : null,
+        deviceId
+      ]);
+
+      res.status(201).json({
+        success: true,
+        message: 'Real-time consumption data recorded successfully',
+        data: {
+          device_id: deviceId,
+          device_name: device_name || deviceInfo?.device_name,
+          device_type: device_type || deviceInfo?.device_type,
+          consumption: parseFloat(consumption),
+          temperature: temperature ? parseFloat(temperature) : null,
+          humidity: humidity ? parseFloat(humidity) : null,
+          timestamp: recordTime.toISOString(),
+          consumption_date: consumptionDate,
+          hour_start: hourStart
+        }
+      });
+
+    } catch (error) {
+      console.error('Error recording real-time data:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to record real-time consumption data',
+        error: error.message
+      });
+    }
+  }
+
+  // Bulk real-time data insertion (for multiple devices)
+  static async createRealTimeBulk(req, res) {
+    try {
+      const { data } = req.body;
+
+      if (!Array.isArray(data) || data.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Data must be a non-empty array'
+        });
+      }
+
+      const db = require('../config/database');
+      const Device = require('../models/Device');
+      const results = [];
+      const errors = [];
+
+      for (const item of data) {
+        try {
+          const { 
+            device_id, 
+            device_eui,
+            consumption, 
+            temperature, 
+            humidity, 
+            timestamp
+          } = item;
+
+          if (!consumption || (!device_id && !device_eui)) {
+            errors.push({
+              item,
+              error: 'Missing required fields: consumption and (device_id or device_eui)'
+            });
+            continue;
+          }
+
+          let deviceId = device_id;
+          if (!deviceId && device_eui) {
+            const deviceInfo = await Device.getByEUI(device_eui);
+            if (!deviceInfo) {
+              errors.push({
+                item,
+                error: `Device with EUI ${device_eui} not found`
+              });
+              continue;
+            }
+            deviceId = deviceInfo.id;
+          }
+
+          const recordTime = timestamp ? new Date(timestamp) : new Date();
+          const consumptionDate = recordTime.toISOString().split('T')[0];
+          const hourStart = recordTime.toTimeString().split(' ')[0].substring(0, 8);
+          const hourEnd = new Date(recordTime.getTime() + 3600000).toTimeString().split(' ')[0].substring(0, 8);
+
+          const query = `
+            INSERT INTO device_consumption 
+            (device_id, consumption, consumption_date, hour_start, hour_end, temperature, humidity, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
+            ON DUPLICATE KEY UPDATE
+              consumption = VALUES(consumption),
+              temperature = IF(VALUES(temperature) IS NOT NULL, VALUES(temperature), temperature),
+              humidity = IF(VALUES(humidity) IS NOT NULL, VALUES(humidity), humidity)
+          `;
+
+          await db.query(query, [
+            deviceId,
+            parseFloat(consumption),
+            consumptionDate,
+            hourStart,
+            hourEnd,
+            temperature ? parseFloat(temperature) : null,
+            humidity ? parseFloat(humidity) : null
+          ]);
+
+          results.push({
+            device_id: deviceId,
+            consumption: parseFloat(consumption),
+            timestamp: recordTime.toISOString(),
+            status: 'success'
+          });
+
+        } catch (itemError) {
+          errors.push({
+            item,
+            error: itemError.message
+          });
+        }
+      }
+
+      res.status(201).json({
+        success: errors.length === 0,
+        message: `Processed ${results.length} records${errors.length > 0 ? `, ${errors.length} failed` : ''}`,
+        data: results,
+        errors: errors.length > 0 ? errors : undefined
+      });
+
+    } catch (error) {
+      console.error('Error in bulk real-time data:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to process bulk real-time data',
+        error: error.message
+      });
+    }
+  }
+
   static async delete(req, res) {
     try {
       const { id } = req.params;

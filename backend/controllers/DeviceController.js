@@ -90,6 +90,38 @@ class DeviceController {
     }
   }
 
+  // Get device by IoT EUI (for Node-RED integration)
+  static async getByEUI(req, res) {
+    try {
+      const { eui } = req.params;
+      const device = await Device.getByEUI(eui);
+
+      if (!device) {
+        return res.status(404).json({
+          success: false,
+          message: `Device with EUI ${eui} not found`
+        });
+      }
+
+      // Get consumption data
+      const today = new Date().toISOString().split('T')[0];
+      const consumptionData = await Consumption.getDaily(device.id, today);
+
+      res.json({
+        success: true,
+        data: {
+          ...device,
+          consumption: consumptionData
+        }
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
   static async create(req, res) {
     try {
       const {

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Menu, Settings, Bell, AlertCircle, Trash2, Eye, EyeOff, Archive, Filter, Clock, AlertTriangle, Zap, Gauge, Activity } from 'lucide-react'
+import { Menu, Settings, Bell, AlertCircle, Trash2, Eye, EyeOff, Archive, Clock, AlertTriangle, Zap, Gauge, Activity } from 'lucide-react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { alertsAPI } from '@/lib/apiClient'

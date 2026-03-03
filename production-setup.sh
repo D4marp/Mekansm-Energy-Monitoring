@@ -6,7 +6,7 @@
 
 set -e
 
-DOMAIN="energyconsumption.mekansm.com"
+DOMAIN="energyconsumption.mekansm.co.id"
 APP_DIR="/root/Mekansm-Energy-Monitoring"
 
 echo "=========================================="

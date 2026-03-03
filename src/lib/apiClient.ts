@@ -3,7 +3,11 @@
  * Handles all backend API requests
  */
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5002/api/v1';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || (
+  typeof window !== 'undefined' && window.location.protocol === 'https:'
+    ? 'https://energyconsumption.mekansm.co.id/api/v1'
+    : 'http://localhost:5002/api/v1'
+);
 
 // Error handler
 class APIError extends Error {
